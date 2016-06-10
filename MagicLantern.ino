@@ -35,17 +35,22 @@ void setup() {
   //trigger.setLooping(true,1);
   randomSeed(A0);
 
-  numTracks = getNumTracks();
+  //numTracks = getNumTracks();
+  numTracks = 17;
+   matrix.print(numTracks);
 }
 
 void loop() {
   // process signals from the trigger
-  trigger.update();
+  //trigger.update();
 
+  //-- tester, don't use with utton
+  playRandomTrack();
+}
 
-
+void playRandomTrack() {
   if( startTime + waitTime < millis() ) {
-    trackNum = random(numTracks);
+    trackNum = random(numTracks) + 1;
     trigger.trigger(trackNum);
     matrix.print(trackNum);
     matrix.writeDisplay();
@@ -57,7 +62,6 @@ void loop() {
     startTime = millis();
   }
 }
-
 
 /*
 
