@@ -15,9 +15,18 @@ unsigned long startTime = 0;
 int  numTracks = 17;
 int trackNum = 1;
 
+//-- general
+int debounceMS = 100;
+
+//
+int switchPin = 12;
+
 SoftwareSerial trigSerial = SoftwareSerial(2, 3);
 
 void setup() {
+  pinMode(switchPin, INPUT);  // Your switch pin (though technically speaking, this code is not needed)
+
+   
   Serial.begin(9600);
   matrix.begin(0x70);
   matrix.print(0);
@@ -38,14 +47,37 @@ void setup() {
   //numTracks = getNumTracks();
   numTracks = 17;
    matrix.print(numTracks);
+   matrix.writeDisplay();
 }
 
 void loop() {
   // process signals from the trigger
   //trigger.update();
 
-  //-- tester, don't use with utton
-  playRandomTrack();
+  //-- tester, don't use with button
+  //playRandomTrack();
+
+  if( triggerSound() ) {
+      trackNum = random(numTracks) + 1;
+      trigger.trigger(trackNum);
+      matrix.print(trackNum);
+      matrix.writeDisplay();
+  }
+}
+
+boolean triggerSound() {
+  if( digitalRead(switchPin) == true  ) {   // button is pressed
+        delay(debounceMS); // debounce
+         
+         // wait for button to be released
+         while( digitalRead(switchPin) == true ) {
+           ;  // do nothing
+         }
+         delay(debounceMS); // debounce
+    return true;
+  }
+
+  return false;
 }
 
 void playRandomTrack() {
