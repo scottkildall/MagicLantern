@@ -53,7 +53,7 @@ void setup() {
   
   //-- get the number of tracks
   numTracks = getNumTracks();
-  //numTracks = 17;
+ // numTracks = 40;
   
   if( numTracks == -1 ) {
      matrix.print(9999);
@@ -218,14 +218,18 @@ int getNumTracks() {
   int num = 0;            //-- number of tracks, aggregating
   int decimalPlaces = 0;
   for( int i = numArrayEntries-1; i >= 0; i-- ) {
+  //for( int i = numArrayEntries-1; i >= 0; i-- ) {
           
     if( numArray[i] != -1 ) {
       if( decimalPlaces == 0 )
         num = numArray[i];
       else {
-          num +=  (numArray[i] * 10 * decimalPlaces );
-
+          int mutiplier = 1;
+          for( int j = 0; j < decimalPlaces; j++ ) 
+            mutiplier *= 10;
+            
           
+          num +=  (numArray[i] * mutiplier );      
       }
       
       Serial.print("digit = ");
