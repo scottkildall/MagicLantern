@@ -1,4 +1,12 @@
 
+//----------------------------------------------------------------------------------
+//-- MODIFY THESE
+
+// time in milliseconds after stepping on the pad that the sound will trigger
+const int soundTriggerDelayTime = 1000;       
+
+//----------------------------------------------------------------------------------
+
 #include <SoftwareSerial.h>
 
 #include "Adafruit_LEDBackpack.h"
@@ -7,21 +15,34 @@
 #include <Wire.h> // Enable this line if using Arduino Uno, Mega, etc.
 Adafruit_7segment matrix = Adafruit_7segment();
 
+
+
 //-- 1 = send debug messages to the serial port, 0 = no debug (faster)
 #define SERIAL_DEBUG (1)
 
 #include <MP3Trigger.h>
+
+//-- general: wait times
+int debounceMS = 100;
+
+//-- pins
+int soundTriggerPin = 12;         // a momentary switch, used to trigger the sound for debugging
+int floorMatPin = 11;             // a floor mat, which acts as toggle switch
+int soundTriggerLED = 10;         // LED for the sound trigger
+
+int acRelayTestPin = 9;           // momentary switch for AC relay
+int acRelayLEDPin = 8;            // LED for the AC relay, displays ON when the circuit is closed
+
+//-- states
+#define STATE_READY           (0)         // ready to play a sound
+#define STATE_STANDING        (1)         // person is standing on mat
+
+//-- MP3 player
 MP3Trigger trigger;
 unsigned long waitTime = 1700;
 unsigned long startTime = 0;
 int  numTracks = 17;
 int trackNum = 1;
-
-//-- general
-int debounceMS = 100;
-
-//-- pins
-int soundTriggerPin = 12;         // a momentary switch, used to trigger the sound for debugging
 
 SoftwareSerial trigSerial = SoftwareSerial(2, 3);
 
@@ -38,9 +59,11 @@ void setup() {
   
   //-- initalize various pins, specify INPUT pins for code legibiity
   pinMode(soundTriggerPin, INPUT); 
-
+  pinMode(floorMatPin, INPUT); 
+  pinMode(acRelayTestPin, INPUT); 
   
-  
+  pinMode(soundTriggerLED, OUTPUT); 
+  pinMode(acRelayLEDPin, OUTPUT); 
   
   
   // Start serial communication with the trigger (over Soft Serial)
