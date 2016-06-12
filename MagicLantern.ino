@@ -150,8 +150,7 @@ int getNumTracks() {
   delay(1000);
   
   int byteCount = 0;      //-- How many bytes we have counted, use for multiplier, 
-  int num = 0;            //-- number of tracks, aggregating
-
+  
   if( SERIAL_DEBUG ) {
     Serial.println("getNumTracks()");
   }
@@ -212,9 +211,37 @@ int getNumTracks() {
     byteCount++;
   }
 
-  //-- now, reverse-process the array
-  
-  return 17;
+  //-- now, reverse-process the array,
+
+  //-- count num digits
+  Serial.println("reverse-processing");
+  int num = 0;            //-- number of tracks, aggregating
+  int decimalPlaces = 0;
+  for( int i = numArrayEntries-1; i >= 0; i-- ) {
+          
+    if( numArray[i] != -1 ) {
+      if( decimalPlaces == 0 )
+        num = numArray[i];
+      else {
+          num +=  (numArray[i] * 10 * decimalPlaces );
+
+          
+      }
+      
+      Serial.print("digit = ");
+      Serial.print(numArray[i]);
+      Serial.println(""); 
+      Serial.print("Num = ");
+      Serial.print(num);
+      Serial.println(""); 
+      
+      decimalPlaces++;
+    }
+  }
+ 
+  //-- there is a bug in the MP3 board, where it reports back DOUBLE the number of tracks available
+  //-- so, we divide by 2 to compensate
+  return num/2;
 }
   
 
