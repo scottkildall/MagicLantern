@@ -28,7 +28,7 @@ int debounceMS = 100;
 //-- pins
 int soundTriggerPin = 12;         // a momentary switch, used to trigger the sound for debugging
 int floorMatPin = 11;             // a floor mat, which acts as toggle switch
-int soundTriggerLED = 10;         // LED for the sound trigger
+int soundTriggerLED = 4;         // LED for the sound trigger
 
 int acRelayTestPin = 9;           // momentary switch for AC relay
 int acRelayLEDPin = 8;            // LED for the AC relay, displays ON when the circuit is closed
@@ -44,6 +44,8 @@ unsigned long startTime = 0;
 int  numTracks = 17;
 int trackNum = 1;
 
+// RX = 2 (connects to TX of MP3)
+// TX = 3 (connects to RX of MP3)
 SoftwareSerial trigSerial = SoftwareSerial(2, 3);
 
 void setup() {
@@ -65,6 +67,8 @@ void setup() {
   pinMode(soundTriggerLED, OUTPUT); 
   pinMode(acRelayLEDPin, OUTPUT); 
   
+
+  digitalWrite(soundTriggerLED,LOW);
   
   // Start serial communication with the trigger (over Soft Serial)
   //-- Use 19200 baud, note this requires a .INI file
@@ -76,7 +80,7 @@ void setup() {
   
   //-- get the number of tracks
   numTracks = getNumTracks();
- // numTracks = 40;
+  numTracks = 6;
   
   if( numTracks == -1 ) {
      matrix.print(9999);
@@ -112,6 +116,11 @@ void loop() {
       trigger.trigger(trackNum);
       matrix.print(trackNum);
       matrix.writeDisplay();
+
+      
+      digitalWrite(soundTriggerLED, HIGH);
+      delay(1000);
+      digitalWrite(soundTriggerLED,LOW);
   }
 }
 

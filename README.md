@@ -13,3 +13,8 @@ Tracks must be preceded by the number, e.g.
 003_chimes.mp3
 
 Also, include the INI file
+
+
+### Adafruit Metro Mini
+
+SDA is A4 and SCL is A5
