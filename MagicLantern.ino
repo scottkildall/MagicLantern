@@ -2,6 +2,10 @@
 //----------------------------------------------------------------------------------
 //-- MODIFY THESE
 
+
+// how many times we will flash the lamp on startup, use 0 for no flashing
+const int lampCycles = 3;
+
 // time in milliseconds after stepping on the pad that the sound will trigger
 const int soundTriggerDelayTime = 1000;       
 
@@ -27,10 +31,11 @@ int debounceMS = 100;
 
 //-- pins
 int soundTriggerPin = 12;         // a momentary switch, used to trigger the sound for debugging
-int floorMatPin = 11;             // a floor mat, which acts as toggle switch
+int floorMatPin = 13;             // a floor mat, which acts as toggle switch
 int soundTriggerLED = 4;         // LED for the sound trigger
 
-int acRelayTestPin = 9;           // momentary switch for AC relay
+int acRelayPin = 6;
+int acRelayTestPin = 10;           // momentary switch for AC relay
 int acRelayLEDPin = 8;            // LED for the AC relay, displays ON when the circuit is closed
 
 //-- states
@@ -66,7 +71,7 @@ void setup() {
   
   pinMode(soundTriggerLED, OUTPUT); 
   pinMode(acRelayLEDPin, OUTPUT); 
-  
+  pinMode(acRelayPin, OUTPUT);
 
   digitalWrite(soundTriggerLED,LOW);
   
@@ -101,13 +106,28 @@ void setup() {
    //-- seed random number generator
    randomSeed(A0);
 
-   
+
+    //-- do a short activation sequence with the lightbulb (for now)
+    for( int i = 0; i < lampCycles; i++ ) {
+      turnLampOff();
+      delay(100);
+      turnLampOn();
+      delay(100);
+    }
 }
 
 void loop() {
   // process signals from the trigger [OBSOLETE?]
   //trigger.update();
 
+  if( checkFloorMat())
+    turnLampOff();
+  else
+    turnLampOn();
+
+   if( checkLampTestPin() )
+      turnLampOff();
+   
   //-- tester, don't use with button
   //playRandomTrack();
 
@@ -158,6 +178,23 @@ void playRandomTrack() {
       trackNum = 1;
     startTime = millis();
   }
+}
+
+boolean checkFloorMat() {
+  // do debounce, etc
+  return digitalRead(floorMatPin);
+}
+
+boolean checkLampTestPin() {
+   return digitalRead(acRelayTestPin);
+}
+//-- AC Relay Functions, inverted since relay is normally-closed
+void turnLampOn() {
+   digitalWrite(acRelayPin, false); 
+}
+
+void turnLampOff() {
+   digitalWrite(acRelayPin, true); 
 }
 
 
