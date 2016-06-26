@@ -30,13 +30,14 @@ Adafruit_7segment matrix = Adafruit_7segment();
 int debounceMS = 100;
 
 //-- pins
-int soundTriggerPin = 12;         // a momentary switch, used to trigger the sound for debugging
-int floorMatPin = 13;             // a floor mat, which acts as toggle switch
+int rxSoftSerialPin = 2;
+int txSoftSerialPin = 3;
 int soundTriggerLED = 4;         // LED for the sound trigger
-
 int acRelayPin = 6;
-int acRelayTestPin = 10;           // momentary switch for AC relay
-int acRelayLEDPin = 8;            // LED for the AC relay, displays ON when the circuit is closed
+int acRelayTestPin = 8;           // momentary switch for AC relay
+int soundTriggerPin = 10;         // a momentary switch, used to trigger the sound for debugging
+int floorMatPin = 13;             // a floor mat, which acts as toggle switch
+
 
 //-- states
 #define STATE_READY           (0)         // ready to play a sound
@@ -51,7 +52,7 @@ int trackNum = 1;
 
 // RX = 2 (connects to TX of MP3)
 // TX = 3 (connects to RX of MP3)
-SoftwareSerial trigSerial = SoftwareSerial(2, 3);
+SoftwareSerial trigSerial = SoftwareSerial(rxSoftSerialPin, txSoftSerialPin);
 
 void setup() {
   if( SERIAL_DEBUG ) {
@@ -70,7 +71,6 @@ void setup() {
   pinMode(acRelayTestPin, INPUT); 
   
   pinMode(soundTriggerLED, OUTPUT); 
-  pinMode(acRelayLEDPin, OUTPUT); 
   pinMode(acRelayPin, OUTPUT);
 
   digitalWrite(soundTriggerLED,LOW);
@@ -85,7 +85,7 @@ void setup() {
   
   //-- get the number of tracks
   numTracks = getNumTracks();
-  numTracks = 6;
+  //numTracks = 20;
   
   if( numTracks == -1 ) {
      matrix.print(9999);
