@@ -2,32 +2,50 @@
 //----------------------------------------------------------------------------------
 //-- MODIFY THESE
 
+// how many tracks we will have — use this as a backup system in case we see a 
+// repetitive 9999 error
+const int defaultNumTracks = 5;
 
 // how many times we will flash the lamp on startup, use 0 for no flashing
 const int lampCycles = 3;
 
 // time in milliseconds after stepping on the pad that the sound will trigger
-const int soundTriggerDelayTime = 1000;       
+const int steppedOnMatWaitTime = 3000;       
+
+// how long we will wait for sound to finish playing
+const int soundPlaybackTime = 20000;
 
 //----------------------------------------------------------------------------------
-
-#include <SoftwareSerial.h>
-
-#include "Adafruit_LEDBackpack.h"
-#include "Adafruit_GFX.h"
-
-#include <Wire.h> // Enable this line if using Arduino Uno, Mega, etc.
-Adafruit_7segment matrix = Adafruit_7segment();
-
-
 
 //-- 1 = send debug messages to the serial port, 0 = no debug (faster)
 #define SERIAL_DEBUG (1)
 
-#include <MP3Trigger.h>
+//-- standard libs
+#include <SoftwareSerial.h>
+#include <Wire.h> 
+
+//-- 3rd party libs
+#include "MP3Trigger.h"
+#include "Adafruit_LEDBackpack.h"
+#include "Adafruit_GFX.h"
+
+//-- my libs
+#include "MSTimer.h"
 
 //-- general: wait times
 int debounceMS = 100;
+int startupDelayTime = 2500;      // how long of a delay when we startup
+MSTimer soundPlaybackTimer;
+MSTimer steppedOnMatTimer;
+
+//-- states
+const int stateStartup = 0;
+const int stateError = 1;
+const int stateWaiting = 2;             // user off mat
+const int stateSteppedOnMat = 3;        // user has just stepped on the mat
+const int statePlaying = 4;             // sound is playing (user is on may or off)
+const int stateStillOnMat = 5;             // user still on mat, sound is finished playing
+int state;
 
 //-- pins
 int rxSoftSerialPin = 2;
@@ -39,22 +57,27 @@ int soundTriggerPin = 10;         // a momentary switch, used to trigger the sou
 int floorMatPin = 13;             // a floor mat, which acts as toggle switch
 
 
-//-- states
-#define STATE_READY           (0)         // ready to play a sound
-#define STATE_STANDING        (1)         // person is standing on mat
+//-- tracks
+int  numTracks;                   // how many tracks we have
+int trackNum = 1;                 // which track is the current track
 
-//-- MP3 player
-MP3Trigger trigger;
-unsigned long waitTime = 1700;
-unsigned long startTime = 0;
-int  numTracks = 17;
-int trackNum = 1;
-
-// RX = 2 (connects to TX of MP3)
-// TX = 3 (connects to RX of MP3)
+//-- initialize software seriaal for MP3 player
+// RX = 2 (connects to TX of MP3), TX = 3 (connects to RX of MP3)
 SoftwareSerial trigSerial = SoftwareSerial(rxSoftSerialPin, txSoftSerialPin);
 
+//-- initialize 7-segment display
+Adafruit_7segment matrix = Adafruit_7segment();
+
+//-- initialize MP3 player
+MP3Trigger trigger;
+
 void setup() {
+  //-- Metro Mini needs a delay for the two devices to properly syn
+  delay(startupDelayTime);
+  
+  //-- initial
+  state = stateStartup;
+  
   if( SERIAL_DEBUG ) {
     Serial.begin(9600);
     Serial.println("Magic Lantern, starting up");
@@ -79,22 +102,18 @@ void setup() {
   //-- Use 19200 baud, note this requires a .INI file
   trigger.setup(&trigSerial);
   trigSerial.begin( 19200 );
-  delay(1000);
-
-
-  
+ 
   //-- get the number of tracks
   numTracks = getNumTracks();
-  //numTracks = 20;
   
   if( numTracks == -1 ) {
+     state = stateError;
      matrix.print(9999);
-     numTracks = 0;
+     numTracks = defaultNumTracks;
   }
   else
       matrix.print(numTracks);
   
-   
    matrix.writeDisplay();
 
   if( SERIAL_DEBUG ) {
@@ -105,8 +124,7 @@ void setup() {
   
    //-- seed random number generator
    randomSeed(A0);
-
-
+   
     //-- do a short activation sequence with the lightbulb (for now)
     for( int i = 0; i < lampCycles; i++ ) {
       turnLampOff();
@@ -114,80 +132,122 @@ void setup() {
       turnLampOn();
       delay(100);
     }
+
+    state = stateWaiting;
+
+    soundPlaybackTimer.setTimer(soundPlaybackTime);
+    steppedOnMatTimer.setTimer(steppedOnMatWaitTime);
 }
 
 void loop() {
-  // process signals from the trigger [OBSOLETE?]
-  //trigger.update();
+  boolean triggerSound = false;
+  
+  if( checkFloorMatSoundTrigger())
+     triggerSound = true;
 
-  if( checkFloorMat())
-    turnLampOff();
-  else
-    turnLampOn();
 
-   if( checkLampTestPin() )
+  // test pin for momentary ac relay swith
+   if( momentaryButtonPressed(acRelayTestPin)) {
       turnLampOff();
+      delay(250);
+      turnLampOn();
+   }
    
-  //-- tester, don't use with button
-  //playRandomTrack();
-
-  if( triggerSound() ) {
+   // test pin for momentary sound trigger switch
+  if( momentaryButtonPressed(soundTriggerPin) ) 
+    triggerSound = true;
+  
+  if( triggerSound ) {
       trackNum = random(numTracks) + 1;
       trigger.trigger(trackNum);
       matrix.print(trackNum);
       matrix.writeDisplay();
 
-      
+      // quick feedback with LED
       digitalWrite(soundTriggerLED, HIGH);
       delay(1000);
       digitalWrite(soundTriggerLED,LOW);
   }
+
+  // green LED reflects the state (not what the mat is doing)
+  if( state == statePlaying )
+    digitalWrite(soundTriggerLED,  HIGH );
+  else if( state == stateSteppedOnMat ) {
+    digitalWrite( soundTriggerLED, HIGH );
+    delay(100);
+     digitalWrite( soundTriggerLED, LOW );
+     delay(100);
+  }
+  else
+    digitalWrite( soundTriggerLED, LOW );
 }
 
-//-- return true if we are to trigger a sound, false if not; will change the states accordingly
-boolean triggerSound() {
-  //-- check to see if the floor mat has been triggered
-  //-- [code to go here]
-  
-  //-- check the momentary sound trigger pin
-  if( digitalRead(soundTriggerPin) == true  ) {   // button is pressed
+//-- return true if momentary button is pressed, manages debounce, we only care about the ON state
+boolean momentaryButtonPressed(int switchPin) {
+ //-- check the momentary sound trigger pin
+  if( digitalRead(switchPin) == true  ) {   // button is pressed
         delay(debounceMS); // debounce
          
          // wait for button to be released
-         while( digitalRead(soundTriggerPin) == true ) {
+         while( digitalRead(soundTriggerPin) == true ) 
            ;  // do nothing
-         }
+           
          delay(debounceMS); // debounce
     return true;
   }
 
   return false;
 }
+         
+//-- acts as a toggle switch, return TRUE if we are to play a sound
+//-- condition for this to happen:
+//-- (1) visitor has just stepped on the mat AND the mat wait timer expired, return TRUE
 
-//-- OBSOLETE CODE
-void playRandomTrack() {
-  if( startTime + waitTime < millis() ) {
-    trackNum = random(numTracks) + 1;
-    trigger.trigger(trackNum);
-    matrix.print(trackNum);
-    matrix.writeDisplay();
-
-  
-    trackNum++;
-    if( trackNum > numTracks )
-      trackNum = 1;
-    startTime = millis();
+boolean checkFloorMatSoundTrigger() {
+   //-- we are on the mat, but haven't triggered the sound yet
+  if( state == stateSteppedOnMat ) {
+       // check to see if we stepped off the mat before the sound trigger
+      if( digitalRead(floorMatPin) == false )
+          state = stateWaiting;
+          
+      //-- still on mat, check mat-stepped on timer
+      else if( steppedOnMatTimer.isExpired() ) {
+        soundPlaybackTimer.start();
+        state = statePlaying;
+        return true;
+      }
   }
+  
+  //-- still playing, check the playack timer
+  if( state == statePlaying ) {
+    if( soundPlaybackTimer.isExpired() == false ) {
+      if( digitalRead(floorMatPin) == true ) 
+        state = stateStillOnMat;
+      else
+        state = stateWaiting;
+    }
+  }
+
+  if( state == stateStillOnMat ) {
+    if( digitalRead(floorMatPin) == false ) {
+      delay(debounceMS); // debounce
+      state = stateWaiting;
+    }
+  }
+  //-- check to see if we have stepped on the mat
+  if( state == stateWaiting ) {
+    // Just stepped on mat, start timer, switch states
+    if( digitalRead(floorMatPin) == true ) {
+      state = stateSteppedOnMat;
+      steppedOnMatTimer.start();  
+    }
+  }
+
+     
+  return false;
 }
 
-boolean checkFloorMat() {
-  // do debounce, etc
-  return digitalRead(floorMatPin);
-}
 
-boolean checkLampTestPin() {
-   return digitalRead(acRelayTestPin);
-}
 //-- AC Relay Functions, inverted since relay is normally-closed
 void turnLampOn() {
    digitalWrite(acRelayPin, false); 
@@ -228,6 +288,8 @@ int getNumTracks() {
       if( SERIAL_DEBUG ) {
           Serial.println("no software serial response");
       }
+
+      return -1;
   }
   
   while( trigSerial.available() )
