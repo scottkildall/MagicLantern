@@ -10,17 +10,18 @@ const int defaultNumTracks = 5;
 const int lampCycles = 3;
 
 // time in milliseconds after stepping on the pad that the sound will trigger
-const int steppedOnMatWaitTime = 1000; 
+const int steppedOnMatWaitTime = 6000; 
 
 // how long we will wait for sound to finish playing
 const int soundPlaybackTime = 15000;      
 
 //-- how long we will flicker the lamp on/off after sound playback
-const int lampFlickerTime = 6000;        
+const int lampFlickerTime = 5000;        
 
 //-- set to random on/off, with low and high values  
 const int minLampOffTime = 100;
 const int maxLampOffTime = 400;
+const int intitialLampOffTime = 750;
 
    
 
@@ -266,7 +267,9 @@ boolean checkFloorMatSoundTrigger() {
         lampFlickerTimer.start();
         
         //-- switch lamp (this will be to OFF)
-        switchLamp();
+        turnLampOff();
+        switchLampTimer.setTimer(intitialLampOffTime);
+        switchLampTimer.start();
         
         state = statePlaying;
         
