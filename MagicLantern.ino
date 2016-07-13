@@ -10,10 +10,19 @@ const int defaultNumTracks = 5;
 const int lampCycles = 3;
 
 // time in milliseconds after stepping on the pad that the sound will trigger
-const int steppedOnMatWaitTime = 3000;       
+const int steppedOnMatWaitTime = 1000; 
 
 // how long we will wait for sound to finish playing
-const int soundPlaybackTime = 20000;
+const int soundPlaybackTime = 15000;      
+
+//-- how long we will flicker the lamp on/off after sound playback
+const int lampFlickerTime = 6000;        
+
+//-- set to random on/off, with low and high values  
+const int minLampOffTime = 100;
+const int maxLampOffTime = 400;
+
+   
 
 //----------------------------------------------------------------------------------
 
@@ -35,8 +44,12 @@ const int soundPlaybackTime = 20000;
 //-- general: wait times
 int debounceMS = 100;
 int startupDelayTime = 2500;      // how long of a delay when we startup
-MSTimer soundPlaybackTimer;
-MSTimer steppedOnMatTimer;
+
+//-- all times
+MSTimer soundPlaybackTimer;       // how long we will consider the sound to be playing
+MSTimer steppedOnMatTimer;        // how long after user steps on mat before we play sound
+MSTimer lampFlickerTimer;         // how long to flicker the lamp for
+MSTimer switchLampTimer;          // how long to switch lamp on/off to simulate speaking
 
 //-- states
 const int stateStartup = 0;
@@ -44,22 +57,26 @@ const int stateError = 1;
 const int stateWaiting = 2;             // user off mat
 const int stateSteppedOnMat = 3;        // user has just stepped on the mat
 const int statePlaying = 4;             // sound is playing (user is on may or off)
-const int stateStillOnMat = 5;             // user still on mat, sound is finished playing
-int state;
+const int stateStillOnMat = 5;          // user still on mat, sound is finished playing
+
+
+int state       = stateStartup;       // current state
+boolean lampOn  = true;               // whether lamp is on or off
 
 //-- pins
-int rxSoftSerialPin = 2;
-int txSoftSerialPin = 3;
-int soundTriggerLED = 4;         // LED for the sound trigger
-int acRelayPin = 6;
-int acRelayTestPin = 8;           // momentary switch for AC relay
-int soundTriggerPin = 10;         // a momentary switch, used to trigger the sound for debugging
-int floorMatPin = 13;             // a floor mat, which acts as toggle switch
+const int rxSoftSerialPin = 2;
+const int txSoftSerialPin = 3;
+const int soundTriggerLED = 4;         // LED for the sound trigger
+const int acRelayPin = 6;
+const int acRelayTestPin = 8;           // momentary switch for AC relay
+const int soundTriggerPin = 10;         // a momentary switch, used to trigger the sound for debugging
+const int floorMatPin = 13;             // a floor mat, which acts as toggle switch
 
 
 //-- tracks
-int  numTracks;                   // how many tracks we have
+int numTracks;                   // how many tracks we have
 int trackNum = 1;                 // which track is the current track
+int lastTrackPlayed;
 
 //-- initialize software seriaal for MP3 player
 // RX = 2 (connects to TX of MP3), TX = 3 (connects to RX of MP3)
@@ -121,30 +138,25 @@ void setup() {
     Serial.print( numTracks );    
     Serial.println();
   }
-  
-   //-- seed random number generator
-   randomSeed(A0);
-   
-    //-- do a short activation sequence with the lightbulb (for now)
-    for( int i = 0; i < lampCycles; i++ ) {
-      turnLampOff();
-      delay(100);
-      turnLampOn();
-      delay(100);
-    }
+
+  // do a quick on/off of the lamp when start up
+  cycleLamp(lampCycles,150);
 
     state = stateWaiting;
 
     soundPlaybackTimer.setTimer(soundPlaybackTime);
     steppedOnMatTimer.setTimer(steppedOnMatWaitTime);
+    lampFlickerTimer.setTimer(lampFlickerTime);
+
+    lastTrackPlayed = -1;
 }
 
 void loop() {
   boolean triggerSound = false;
+  boolean momentaryTrigger = false;
   
   if( checkFloorMatSoundTrigger())
      triggerSound = true;
-
 
   // test pin for momentary ac relay swith
    if( momentaryButtonPressed(acRelayTestPin)) {
@@ -154,34 +166,64 @@ void loop() {
    }
    
    // test pin for momentary sound trigger switch
-  if( momentaryButtonPressed(soundTriggerPin) ) 
+  if( momentaryButtonPressed(soundTriggerPin) )  {
+    momentaryTrigger = true;
     triggerSound = true;
+  }
   
   if( triggerSound ) {
-      trackNum = random(numTracks) + 1;
+      while(true) {
+        // this seems to work better than the random number generator
+        trackNum = millis() % numTracks + 1;
+        if( trackNum != lastTrackPlayed ) {
+           lastTrackPlayed = trackNum;
+            break;
+        }
+      }
+      
       trigger.trigger(trackNum);
       matrix.print(trackNum);
       matrix.writeDisplay();
 
+       if( SERIAL_DEBUG ) {
+        Serial.print("Triggering track #");
+        Serial.print(trackNum);
+        Serial.println();
+        }
+  
       // quick feedback with LED
-      digitalWrite(soundTriggerLED, HIGH);
-      delay(1000);
-      digitalWrite(soundTriggerLED,LOW);
+      if(  momentaryTrigger ) {
+        digitalWrite(soundTriggerLED, HIGH);
+        delay(1000);
+        digitalWrite(soundTriggerLED,LOW);
+      }
   }
 
   // green LED reflects the state (not what the mat is doing)
   if( state == statePlaying )
     digitalWrite(soundTriggerLED,  HIGH );
+    
   else if( state == stateSteppedOnMat ) {
     digitalWrite( soundTriggerLED, HIGH );
     delay(100);
      digitalWrite( soundTriggerLED, LOW );
      delay(100);
   }
+  
   else
     digitalWrite( soundTriggerLED, LOW );
 }
 
+void cycleLamp(int numCycles, int delayTime) {
+    //-- do a short activation sequence with the lightbulb (for now)
+    for( int i = 0; i < numCycles; i++ ) {
+      turnLampOff();
+      delay(delayTime);
+      turnLampOn();
+      delay(delayTime);
+    }
+}
+    
 //-- return true if momentary button is pressed, manages debounce, we only care about the ON state
 boolean momentaryButtonPressed(int switchPin) {
  //-- check the momentary sound trigger pin
@@ -207,24 +249,64 @@ boolean checkFloorMatSoundTrigger() {
    //-- we are on the mat, but haven't triggered the sound yet
   if( state == stateSteppedOnMat ) {
        // check to see if we stepped off the mat before the sound trigger
-      if( digitalRead(floorMatPin) == false )
+      if( digitalRead(floorMatPin) == false ) {
           state = stateWaiting;
+
+          if( SERIAL_DEBUG ) 
+            Serial.println("state = WAITING");
+         
+      }
           
       //-- still on mat, check mat-stepped on timer
       else if( steppedOnMatTimer.isExpired() ) {
+        
         soundPlaybackTimer.start();
+
+        //-- we will begin flickering the lamp to simulate "speaking"
+        lampFlickerTimer.start();
+        
+        //-- switch lamp (this will be to OFF)
+        switchLamp();
+        
         state = statePlaying;
+        
+         if( SERIAL_DEBUG ) 
+            Serial.println("state = PLAYING");
+         
         return true;
       }
   }
   
   //-- still playing, check the playack timer
   if( state == statePlaying ) {
-    if( soundPlaybackTimer.isExpired() == false ) {
-      if( digitalRead(floorMatPin) == true ) 
+    if( soundPlaybackTimer.isExpired() == true ) {
+      if( digitalRead(floorMatPin) == true ) {
         state = stateStillOnMat;
-      else
+        if( SERIAL_DEBUG ) {
+            Serial.println("state = STILL ON MAT");
+         }
+      }
+      else {
         state = stateWaiting;
+        if( SERIAL_DEBUG ) {
+            Serial.println("state = WAITING");
+         }
+      }
+    }
+
+    else {
+        //-- not expired, check to see if we should switch the lamp on/off
+        if( lampFlickerTimer.isExpired() == false ) {
+
+          // switchLamp() will also reset the timer
+          if( switchLampTimer.isExpired() )
+            switchLamp();
+        }
+        else {
+          //-- make sure lamp goes on, if it was off and lamp just  stopped flickering
+          if( lampOn == false )
+            turnLampOn();
+        }
     }
   }
 
@@ -232,6 +314,10 @@ boolean checkFloorMatSoundTrigger() {
     if( digitalRead(floorMatPin) == false ) {
       delay(debounceMS); // debounce
       state = stateWaiting;
+
+      if( SERIAL_DEBUG )
+        Serial.println("state = WAITING");
+      
     }
   }
   //-- check to see if we have stepped on the mat
@@ -239,6 +325,10 @@ boolean checkFloorMatSoundTrigger() {
     // Just stepped on mat, start timer, switch states
     if( digitalRead(floorMatPin) == true ) {
       state = stateSteppedOnMat;
+
+      if( SERIAL_DEBUG )
+         Serial.println("state = STEPPED ON MAT");
+      
       steppedOnMatTimer.start();  
     }
   }
@@ -251,17 +341,28 @@ boolean checkFloorMatSoundTrigger() {
 //-- AC Relay Functions, inverted since relay is normally-closed
 void turnLampOn() {
    digitalWrite(acRelayPin, false); 
+   lampOn = true;
 }
 
 void turnLampOff() {
    digitalWrite(acRelayPin, true); 
+   lampOn = false;
 }
 
+//-- switches lamp on or off, based on current state and will spwan the switch lamp timer
+void switchLamp() {
+  if(lampOn)
+    turnLampOff();
+  else
+    turnLampOn();
+
+  switchLampTimer.setTimer(random(minLampOffTime,maxLampOffTime));
+  switchLampTimer.start();
+}
 
 //-- send num tracks query
-//-- fix, won't work for more than 99 tracks
-//-- also, gives
-//-- return -1 if error
+//-- might not work for more than 99 tracks
+//-- returns -1 if error
 int getNumTracks() {
   //-- an array of numerical entries, which will be reverse-ordered
   int numArrayEntries = 4;
@@ -335,17 +436,15 @@ int getNumTracks() {
            Serial.print(numArray[numArrayIndex], DEC);
            Serial.println();
       }
-     
     }
 
-    Serial.println("incr"); 
+    //Serial.println("incr"); 
     byteCount++;
   }
 
   //-- now, reverse-process the array,
 
   //-- count num digits
-  Serial.println("reverse-processing");
   int num = 0;            //-- number of tracks, aggregating
   int decimalPlaces = 0;
   for( int i = numArrayEntries-1; i >= 0; i-- ) {
@@ -362,13 +461,16 @@ int getNumTracks() {
           
           num +=  (numArray[i] * mutiplier );      
       }
-      
+
+      //-- ugly debug code, no longer needed, ucomment just in case
+      /*
       Serial.print("digit = ");
       Serial.print(numArray[i]);
       Serial.println(""); 
       Serial.print("Num = ");
       Serial.print(num);
       Serial.println(""); 
+      */
       
       decimalPlaces++;
     }
