@@ -148,7 +148,7 @@ void setup() {
     soundPlaybackTimer.setTimer(soundPlaybackTime);
     steppedOnMatTimer.setTimer(steppedOnMatWaitTime);
     lampFlickerTimer.setTimer(lampFlickerTime);
-
+      
     lastTrackPlayed = -1;
 }
 
@@ -181,7 +181,8 @@ void loop() {
             break;
         }
       }
-      
+
+     trigger.setVolume(0x00);
       trigger.trigger(trackNum);
       matrix.print(trackNum);
       matrix.writeDisplay();
